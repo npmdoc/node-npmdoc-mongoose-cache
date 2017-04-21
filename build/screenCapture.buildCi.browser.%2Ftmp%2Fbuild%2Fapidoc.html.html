@@ -1,0 +1,343 @@
+<html><head></head><body><div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a>mongoose-cache (v0.1.5)</a>
+</h1>
+<h4>Caches Database querys the easy way.</h4>
+<div class="apidocSectionDiv"><a href="#apidoc.tableOfContents" id="apidoc.tableOfContents"><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.mongoose-cache">module mongoose-cache</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.mongoose-cache.install">
+            function <span class="apidocSignatureSpan">mongoose-cache.</span>install
+            <span class="apidocSignatureSpan">(mongoose, options, Aggregate)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <span class="apidocSignatureSpan">object <span class="apidocSignatureSpan">mongoose-cache.</span>cache</span>
+
+        </li>
+
+    </ol></li>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.mongoose-cache.cache">module mongoose-cache.cache</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.mongoose-cache.cache.install">
+            function <span class="apidocSignatureSpan">mongoose-cache.cache.</span>install
+            <span class="apidocSignatureSpan">(mongoose, options, Aggregate)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.mongoose-cache" id="apidoc.module.mongoose-cache">module mongoose-cache</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.mongoose-cache.install" id="apidoc.element.mongoose-cache.install">
+        function <span class="apidocSignatureSpan">mongoose-cache.</span>install
+        <span class="apidocSignatureSpan">(mongoose, options, Aggregate)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">install = function (mongoose, options, Aggregate) {
+	var cache = LRU(options);
+
+	var log = options.debug ? console.log : function() {};
+
+	var orig = {
+		execFind: mongoose.Query.prototype.execFind,
+		exec: mongoose.Query.prototype.exec
+	};
+	mongoose.Query.prototype.cache = function() {
+		this.__cached = true;
+		return this;
+	};
+
+	if (typeof Aggregate !== 'undefined') {
+		orig.execAggregate = Aggregate.prototype.exec;
+		Aggregate.prototype.cache = function() {
+			this.__cached = true;
+			return this;
+		};
+	}
+
+	var exec = function(caller, args) {
+		if (!this.__cached) {
+			return orig[caller].apply(this, args);
+		}
+		var key = genKey(this),
+			obj = cache.get(key),
+			i;
+
+		if (obj) {
+			log('cache hit: ', key);
+			for (i = 0; i &lt; args.length; i++) {
+				if (typeof args[i] === 'function') {
+					args[i](null, obj);
+					break;
+				}
+			}
+			return this;
+		}
+
+		function cacheSet(err, obj) {
+			if (!err) {
+				log('save to cache: ', key);
+				cache.set(key, obj);
+			}
+			this.apply(this, arguments);
+		}
+
+		for (i = 0; i &lt; args.length; i++) {
+			if (typeof args[i] !== 'function')
+				continue;
+			args[i] = (cacheSet).bind(args[i]);
+		}
+		return orig[caller].apply(this, args);
+	};
+
+	function genKey(query) {
+		if (query._pipeline) {
+			return genKeyAggregate(query);
+		}
+		return JSON.stringify({
+			model: query.model.modelName,
+			query: query._conditions,
+			fields: query._fields,
+			options: query.options
+		});
+	}
+
+	function genKeyAggregate(aggregate) {
+		return JSON.stringify({
+			model: aggregate._model.modelName,
+			pipeline: aggregate._pipeline,
+			options: aggregate.options
+		});
+	}
+
+	mongoose.Query.prototype.execFind = function(arg1, arg2) {
+		return exec.call(this, 'execFind', arguments);
+	};
+	mongoose.Query.prototype.exec = function(arg1, arg2) {
+		return exec.call(this, 'exec', arguments);
+	};
+	if (typeof Aggregate !== 'undefined') {
+		Aggregate.prototype.exec = function(arg1, arg2) {
+			return exec.call(this, 'execAggregate', arguments);
+		};
+	}
+	return mongoose;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+```javascript
+var mongoose = require('./mongoose')
+var cacheOpts = {
+	max:50,
+	maxAge:1000*60*2
+};
+require('mongoose-cache').<span class="apidocCodeKeywordSpan">install</span>(mongoose, cacheOpts)
+```
+
+This means "cache up to 50 querys with a livetime of two minutes".
+See &lt;https://github.com/isaacs/node-lru-cache#options&gt; for all available
+options.
+
+For enabling this cache in your query just call .cache()
+...</pre></li>
+    </ul>
+
+
+
+
+</div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.mongoose-cache.cache" id="apidoc.module.mongoose-cache.cache">module mongoose-cache.cache</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.mongoose-cache.cache.install" id="apidoc.element.mongoose-cache.cache.install">
+        function <span class="apidocSignatureSpan">mongoose-cache.cache.</span>install
+        <span class="apidocSignatureSpan">(mongoose, options, Aggregate)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">install = function (mongoose, options, Aggregate) {
+	var cache = LRU(options);
+
+	var log = options.debug ? console.log : function() {};
+
+	var orig = {
+		execFind: mongoose.Query.prototype.execFind,
+		exec: mongoose.Query.prototype.exec
+	};
+	mongoose.Query.prototype.cache = function() {
+		this.__cached = true;
+		return this;
+	};
+
+	if (typeof Aggregate !== 'undefined') {
+		orig.execAggregate = Aggregate.prototype.exec;
+		Aggregate.prototype.cache = function() {
+			this.__cached = true;
+			return this;
+		};
+	}
+
+	var exec = function(caller, args) {
+		if (!this.__cached) {
+			return orig[caller].apply(this, args);
+		}
+		var key = genKey(this),
+			obj = cache.get(key),
+			i;
+
+		if (obj) {
+			log('cache hit: ', key);
+			for (i = 0; i &lt; args.length; i++) {
+				if (typeof args[i] === 'function') {
+					args[i](null, obj);
+					break;
+				}
+			}
+			return this;
+		}
+
+		function cacheSet(err, obj) {
+			if (!err) {
+				log('save to cache: ', key);
+				cache.set(key, obj);
+			}
+			this.apply(this, arguments);
+		}
+
+		for (i = 0; i &lt; args.length; i++) {
+			if (typeof args[i] !== 'function')
+				continue;
+			args[i] = (cacheSet).bind(args[i]);
+		}
+		return orig[caller].apply(this, args);
+	};
+
+	function genKey(query) {
+		if (query._pipeline) {
+			return genKeyAggregate(query);
+		}
+		return JSON.stringify({
+			model: query.model.modelName,
+			query: query._conditions,
+			fields: query._fields,
+			options: query.options
+		});
+	}
+
+	function genKeyAggregate(aggregate) {
+		return JSON.stringify({
+			model: aggregate._model.modelName,
+			pipeline: aggregate._pipeline,
+			options: aggregate.options
+		});
+	}
+
+	mongoose.Query.prototype.execFind = function(arg1, arg2) {
+		return exec.call(this, 'execFind', arguments);
+	};
+	mongoose.Query.prototype.exec = function(arg1, arg2) {
+		return exec.call(this, 'exec', arguments);
+	};
+	if (typeof Aggregate !== 'undefined') {
+		Aggregate.prototype.exec = function(arg1, arg2) {
+			return exec.call(this, 'execAggregate', arguments);
+		};
+	}
+	return mongoose;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+```javascript
+var mongoose = require('./mongoose')
+var cacheOpts = {
+	max:50,
+	maxAge:1000*60*2
+};
+require('mongoose-cache').<span class="apidocCodeKeywordSpan">install</span>(mongoose, cacheOpts)
+```
+
+This means "cache up to 50 querys with a livetime of two minutes".
+See &lt;https://github.com/isaacs/node-lru-cache#options&gt; for all available
+options.
+
+For enabling this cache in your query just call .cache()
+...</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
+</body></html>
